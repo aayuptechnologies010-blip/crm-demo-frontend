@@ -20,47 +20,65 @@ import {
   ChevronDown,
   X
 } from 'lucide-react';
-import { SAMPLE_SOLAR_PROJECTS, SAMPLE_SOLAR_LEADS } from '../data/solarData';
+import { api } from '../utils/api';
 
 export default function SolarQuotation() {
-  // Merge customer sources for comprehensive lookup
-  const customerDatabase = [
-    ...SAMPLE_SOLAR_PROJECTS.map(p => ({
-      id: p.projectId,
-      name: p.customerName,
-      mobile: p.mobile,
-      email: `${p.customerName.toLowerCase().replace(/[^a-z]/g, '')}@gmail.com`,
-      address: p.address,
-      district: p.district,
-      consumerNo: p.consumerNumber,
-      capacityKw: parseInt(p.solarCapacity) || 5,
-      panelBrand: p.panelBrand || 'Waaree 550W Mono PERC Bifacial TopCon',
-      inverterBrand: p.inverterBrand || 'Growatt 5kW 3-Phase Grid Tie',
-      structureType: p.structureType || 'Elevated HDG Structure (South Facing 22°)'
-    })),
-    ...SAMPLE_SOLAR_LEADS.map(l => ({
-      id: l.id,
-      name: l.customerName,
-      mobile: l.mobile,
-      email: `${l.customerName.toLowerCase().replace(/[^a-z]/g, '')}@gmail.com`,
-      address: l.location,
-      district: l.district,
-      consumerNo: l.consumerNumber,
-      capacityKw: parseInt(l.requiredKw) || 3,
-      panelBrand: 'Waaree 550W Mono PERC Bifacial TopCon',
-      inverterBrand: 'Growatt 5kW 3-Phase Grid Tie',
-      structureType: 'Elevated HDG Structure (South Facing 22°)'
-    }))
-  ];
-
+  const [customerDatabase, setCustomerDatabase] = useState([]);
   const [customer, setCustomer] = useState({
-    name: 'Rajendra Prasad Sharma',
-    mobile: '9876543210',
-    email: 'rajendra.sharma@gmail.com',
-    address: 'Plot 45, Sector B, Aliganj',
+    name: '',
+    mobile: '',
+    email: '',
+    address: '',
     district: 'Lucknow',
-    consumerNo: 'PU-78392104'
+    consumerNo: ''
   });
+
+  useEffect(() => {
+    Promise.allSettled([
+      api.get('/solar/projects'),
+      api.get('/leads')
+    ]).then(([projectsRes, leadsRes]) => {
+      const merged = [];
+      if (projectsRes.status === 'fulfilled' && Array.isArray(projectsRes.value)) {
+        projectsRes.value.forEach(p => {
+          merged.push({
+            id: p.projectId || p._id,
+            name: p.customerName,
+            mobile: p.mobile,
+            email: p.email || `${(p.customerName || 'customer').toLowerCase().replace(/[^a-z]/g, '')}@gmail.com`,
+            address: p.address,
+            district: p.district,
+            consumerNo: p.consumerNumber,
+            capacityKw: parseInt(p.solarCapacity) || 5,
+            panelBrand: p.panelBrand || 'Waaree 550W Mono PERC Bifacial TopCon',
+            inverterBrand: p.inverterBrand || 'Growatt 5kW 3-Phase Grid Tie',
+            structureType: p.structureType || 'Elevated HDG Structure (South Facing 22°)'
+          });
+        });
+      }
+      if (leadsRes.status === 'fulfilled' && Array.isArray(leadsRes.value)) {
+        leadsRes.value.forEach(l => {
+          merged.push({
+            id: l._id || l.id,
+            name: l.customerName || l.name,
+            mobile: l.mobile || l.phone,
+            email: l.email || `${(l.customerName || l.name || 'lead').toLowerCase().replace(/[^a-z]/g, '')}@gmail.com`,
+            address: l.location || l.company,
+            district: l.district || 'Lucknow',
+            consumerNo: l.consumerNumber,
+            capacityKw: parseInt(l.requiredKw || l.value) || 3,
+            panelBrand: 'Waaree 550W Mono PERC Bifacial TopCon',
+            inverterBrand: 'Growatt 5kW 3-Phase Grid Tie',
+            structureType: 'Elevated HDG Structure (South Facing 22°)'
+          });
+        });
+      }
+      setCustomerDatabase(merged);
+      if (merged.length > 0) {
+        setCustomer(merged[0]);
+      }
+    }).catch(err => console.error('Failed to load quotation customers:', err));
+  }, []);
 
   const [capacityKw, setCapacityKw] = useState(5);
   const [panelBrand, setPanelBrand] = useState('Waaree 550W Mono PERC Bifacial TopCon');

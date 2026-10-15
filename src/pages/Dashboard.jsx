@@ -31,47 +31,76 @@ import {
 } from 'recharts';
 import Card from '../components/shared/Card';
 import { useAuth } from '../context/AuthContext';
-import { SAMPLE_SOLAR_LEADS, SAMPLE_SOLAR_PROJECTS } from '../data/solarData';
-
-const KPI_DATA = [
-  { label: 'Total Leads', val: '148', change: '+12% this week', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200' },
-  { label: 'Total Installed kW', val: '840 kW', change: '+45 kW this month', icon: Sun, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
-  { label: 'Active Projects', val: '32', change: '8 in commissioning', icon: Zap, color: 'text-solar-700', bg: 'bg-solar-50 border-solar-200' },
-  { label: 'Installation Pending', val: '14 Sites', change: 'Avg 4 days ETA', icon: Wrench, color: 'text-purple-600', bg: 'bg-purple-50 border-purple-200' },
-  { label: 'Subsidy Pending', val: '19 Claims', change: '₹14.82 Lakh', icon: ShieldCheck, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
-  { label: 'Payment Pending', val: '₹18.4 Lakh', change: '6 Overdue tokens', icon: CreditCard, color: 'text-rose-600', bg: 'bg-rose-50 border-rose-200' },
-  { label: 'Open Complaints', val: '3 Tickets', change: 'All within SLA', icon: LifeBuoy, color: 'text-sky-600', bg: 'bg-sky-50 border-sky-200' },
-  { label: 'Dealer Network', val: '24 Partners', change: '3 Top performers', icon: TrendingUp, color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-200' },
-];
-
-const MONTHLY_KW_DATA = [
-  { month: 'May', kw: 45, projects: 8 },
-  { month: 'Jun', kw: 72, projects: 12 },
-  { month: 'Jul', kw: 95, projects: 16 },
-  { month: 'Aug', kw: 130, projects: 22 },
-  { month: 'Sep', kw: 160, projects: 26 },
-  { month: 'Oct', kw: 210, projects: 34 },
-];
-
-const CAPACITY_DISTRIBUTION = [
-  { name: '2 kW - 3 kW (Domestic)', value: 45, color: '#16a34a' },
-  { name: '4 kW - 5 kW (Residential High)', value: 30, color: '#f59e0b' },
-  { name: '6 kW - 10 kW (Villas/Small Com)', value: 15, color: '#0284c7' },
-  { name: '10 kW+ (Commercial/Instit.)', value: 10, color: '#9333ea' },
-];
+import { api } from '../utils/api';
 
 export default function Dashboard() {
   const { currentUser } = useAuth();
   const [selectedRange, setSelectedRange] = useState('This Month');
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalProjects: 0,
+    totalOrders: 0,
+    totalSurveys: 0,
+    totalDealers: 0,
+    openComplaints: 0,
+    subsidiesPending: 0,
+    totalRevenue: 0,
+    outstanding: 0
+  });
+  const [liveLeads, setLiveLeads] = useState([]);
+  const [liveProjects, setLiveProjects] = useState([]);
 
   useEffect(() => {
-    // Smooth initial data skeleton resolution
-    const timer = setTimeout(() => {
+    let isMounted = true;
+    Promise.allSettled([
+      api.get('/solar/dashboard-stats'),
+      api.get('/leads'),
+      api.get('/solar/projects')
+    ]).then(([statsRes, leadsRes, projectsRes]) => {
+      if (!isMounted) return;
+      if (statsRes.status === 'fulfilled' && statsRes.value) {
+        setStats(statsRes.value);
+      }
+      if (leadsRes.status === 'fulfilled' && Array.isArray(leadsRes.value)) {
+        setLiveLeads(leadsRes.value);
+      }
+      if (projectsRes.status === 'fulfilled' && Array.isArray(projectsRes.value)) {
+        setLiveProjects(projectsRes.value);
+      }
       setLoading(false);
-    }, 400);
-    return () => clearTimeout(timer);
+    }).catch(() => {
+      if (isMounted) setLoading(false);
+    });
+
+    return () => { isMounted = false; };
   }, []);
+
+  const KPI_DATA = [
+    { label: 'Total Leads', val: liveLeads.length || stats.totalSurveys || '0', change: '+12% this week', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200' },
+    { label: 'Total Projects', val: stats.totalProjects || liveProjects.length || '0', change: 'Active Sites', icon: Sun, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
+    { label: 'Active Orders', val: stats.totalOrders || '0', change: 'In Execution', icon: Zap, color: 'text-solar-700', bg: 'bg-solar-50 border-solar-200' },
+    { label: 'Site Surveys', val: stats.totalSurveys || '0', change: 'Rooftop mapped', icon: Wrench, color: 'text-purple-600', bg: 'bg-purple-50 border-purple-200' },
+    { label: 'Subsidy Pending', val: stats.subsidiesPending || '0', change: 'Govt. Claims', icon: ShieldCheck, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+    { label: 'Total Received', val: `₹${((stats.totalRevenue || 0) / 100000).toFixed(2)} L`, change: 'Collected', icon: CreditCard, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
+    { label: 'Open Complaints', val: stats.openComplaints || '0', change: 'Support SLA', icon: LifeBuoy, color: 'text-sky-600', bg: 'bg-sky-50 border-sky-200' },
+    { label: 'Dealer Network', val: stats.totalDealers || '0', change: 'Partners Active', icon: TrendingUp, color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-200' },
+  ];
+
+  const MONTHLY_KW_DATA = [
+    { month: 'May', kw: 45, projects: 8 },
+    { month: 'Jun', kw: 72, projects: 12 },
+    { month: 'Jul', kw: 95, projects: 16 },
+    { month: 'Aug', kw: 130, projects: 22 },
+    { month: 'Sep', kw: 160, projects: 26 },
+    { month: 'Oct', kw: 210, projects: 34 },
+  ];
+
+  const CAPACITY_DISTRIBUTION = [
+    { name: '2 kW - 3 kW (Domestic)', value: 45, color: '#16a34a' },
+    { name: '4 kW - 5 kW (Residential High)', value: 30, color: '#f59e0b' },
+    { name: '6 kW - 10 kW (Villas/Small Com)', value: 15, color: '#0284c7' },
+    { name: '10 kW+ (Commercial/Instit.)', value: 10, color: '#9333ea' },
+  ];
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -233,29 +262,29 @@ export default function Dashboard() {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {SAMPLE_SOLAR_LEADS.slice(0, 4).map(lead => (
-              <div key={lead.id} className="py-3 flex items-center justify-between gap-3">
+            {(liveLeads.length > 0 ? liveLeads : []).slice(0, 4).map(lead => (
+              <div key={lead._id || lead.id} className="py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-800 truncate">{lead.customerName}</span>
+                    <span className="text-xs font-bold text-slate-800 truncate">{lead.customerName || lead.name}</span>
                     <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                      {lead.requiredKw}
+                      {lead.requiredKw || lead.value || 'Solar'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
-                    <span className="flex items-center gap-1"><MapPin size={10} /> {lead.district}</span>
-                    <span>• Bill: {lead.electricityBillAvg}</span>
+                    <span className="flex items-center gap-1"><MapPin size={10} /> {lead.district || lead.location || 'UP'}</span>
+                    <span>• {lead.electricityBillAvg ? `Bill: ${lead.electricityBillAvg}` : (lead.phone || '')}</span>
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${lead.status === 'Installation' ? 'bg-purple-100 text-purple-700' :
                       lead.status === 'Booking' ? 'bg-blue-100 text-blue-700' :
                         lead.status === 'Site Survey' ? 'bg-amber-100 text-amber-800' :
-                          lead.status === 'Completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
+                          lead.status === 'Completed' || lead.status === 'Won' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
                     }`}>
                     {lead.status}
                   </span>
-                  <div className="text-[10px] text-slate-400 mt-1">Due: {lead.followUpDate}</div>
+                  <div className="text-[10px] text-slate-400 mt-1">Due: {lead.followUpDate || 'Today'}</div>
                 </div>
               </div>
             ))}
@@ -278,8 +307,8 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-3">
-            {SAMPLE_SOLAR_PROJECTS.map(proj => (
-              <div key={proj.projectId} className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition-colors">
+            {(liveProjects.length > 0 ? liveProjects : []).slice(0, 4).map(proj => (
+              <div key={proj._id || proj.projectId} className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition-colors">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2">
@@ -289,17 +318,17 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      {proj.solarCapacity} • {proj.panelBrand}
+                      {proj.solarCapacity} • {proj.panelBrand || 'Mono PERC'}
                     </div>
                   </div>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    {proj.subsidyStatus}
+                    {proj.subsidyStatus || 'In Progress'}
                   </span>
                 </div>
 
                 <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Tech: <strong className="text-slate-700">{proj.assignedInstaller}</strong></span>
-                  <span>Net Meter: <strong className="text-slate-700">{proj.netMeterStatus}</strong></span>
+                  <span>Tech: <strong className="text-slate-700">{proj.assignedInstaller || 'Assigned'}</strong></span>
+                  <span>Net Meter: <strong className="text-slate-700">{proj.netMeterStatus || 'Pending'}</strong></span>
                 </div>
               </div>
             ))}

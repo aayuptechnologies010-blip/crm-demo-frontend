@@ -17,22 +17,45 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { SAMPLE_SOLAR_LEADS, LEAD_STATUSES } from '../data/solarData';
+import { LEAD_STATUSES } from '../data/solarData';
 import DataTable from '../components/shared/DataTable';
+import { api } from '../utils/api';
 
 export default function Leads() {
-  const [leads, setLeads] = useState(SAMPLE_SOLAR_LEADS);
+  const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [showAddModal, setShowAddModal] = useState(false);
   const [viewLead, setViewLead] = useState(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
+  const loadLeads = async () => {
+    try {
+      const data = await api.get('/leads');
+      const normalized = (Array.isArray(data) ? data : []).map(l => ({
+        ...l,
+        id: l.id || l._id,
+        customerName: l.customerName || l.name,
+        mobile: l.mobile || l.phone,
+        location: l.location || l.company || 'Lucknow',
+        district: l.district || 'Lucknow',
+        requiredKw: l.requiredKw || l.value || '3 kW',
+        status: l.status || 'New',
+        followUpDate: l.followUpDate || '',
+        electricityBillAvg: l.electricityBillAvg || '',
+        consumerNumber: l.consumerNumber || '',
+        leadSource: l.leadSource || l.source || 'Website'
+      }));
+      setLeads(normalized);
+    } catch (err) {
+      console.error('Failed to load leads:', err);
+    } finally {
       setLoading(false);
-    }, 450);
-    return () => clearTimeout(timer);
+    }
+  };
+
+  useEffect(() => {
+    loadLeads();
   }, []);
 
   // New Lead Form State
@@ -63,21 +86,52 @@ export default function Leads() {
     return matchesSearch && matchesStatus;
   });
 
-  const handleCreateLead = (e) => {
+  const handleCreateLead = async (e) => {
     e.preventDefault();
     if (!newLead.customerName || !newLead.mobile) return;
     
-    const created = {
-      ...newLead,
-      id: `SL-${Math.floor(100 + Math.random() * 900)}`,
+    const kwVal = parseInt(newLead.requiredKw) || 3;
+    const createdPayload = {
+      name: newLead.customerName,
+      customerName: newLead.customerName,
+      phone: newLead.mobile,
+      mobile: newLead.mobile,
+      company: newLead.location,
+      location: newLead.location,
+      district: newLead.district,
+      value: newLead.requiredKw,
+      requiredKw: newLead.requiredKw,
       status: 'New',
-      estimatedAmount: parseInt(newLead.requiredKw) * 55000,
-      subsidyAmount: parseInt(newLead.requiredKw) <= 2 ? 60000 : 78000,
-      payableAmount: (parseInt(newLead.requiredKw) * 55000) - 78000
+      source: newLead.leadSource,
+      leadSource: newLead.leadSource,
+      dealerName: newLead.dealerName,
+      assignedTo: newLead.salesExecutive,
+      followUpDate: newLead.followUpDate,
+      roofType: newLead.roofType,
+      roofArea: newLead.roofArea,
+      consumerNumber: newLead.consumerNumber,
+      electricityBillAvg: newLead.electricityBillAvg,
+      estimatedAmount: kwVal * 55000,
+      subsidyAmount: kwVal <= 2 ? 60000 : 78000,
+      payableAmount: (kwVal * 55000) - 78000
     };
 
-    setLeads([created, ...leads]);
-    setShowAddModal(false);
+    try {
+      const saved = await api.post('/leads', createdPayload);
+      const normalized = {
+        ...saved,
+        id: saved._id || saved.id,
+        customerName: saved.customerName || saved.name,
+        mobile: saved.mobile || saved.phone,
+        location: saved.location || saved.company,
+        requiredKw: saved.requiredKw || saved.value || '3 kW'
+      };
+      setLeads([normalized, ...leads]);
+      setShowAddModal(false);
+    } catch (err) {
+      console.error('Failed to create lead:', err);
+      alert('Error creating lead: ' + err.message);
+    }
     setNewLead({
       customerName: '',
       mobile: '',

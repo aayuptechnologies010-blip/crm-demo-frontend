@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import DataTable from '../components/shared/DataTable';
 import { CardSkeleton } from '../components/shared/Skeleton';
+import { api } from '../utils/api';
 
 export default function SubsidyTracking() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,17 +31,20 @@ export default function SubsidyTracking() {
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [records, setRecords] = useState([]);
 
-  // 100% Alignment with User Requirement 4.H:
-  // - Application Status
-  // - Document Status
-  // - DISCOM Status
-  // - Installation Status
-  // - Inspection Status
-  // - Subsidy Approval
-  // - Subsidy Received
-  // - Pending Reason
-  const [records, setRecords] = useState([
+  const loadSubsidies = async () => {
+    try {
+      const data = await api.get('/solar/subsidies');
+      setRecords(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load subsidies:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [initialSeed] = useState([
     {
       id: 'SUB-2026-001',
       projectId: 'DBPL-2026-00001',
@@ -168,20 +172,23 @@ export default function SubsidyTracking() {
   });
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(timer);
+    loadSubsidies();
   }, []);
 
-  const handleAddRecord = (e) => {
+  const handleAddRecord = async (e) => {
     e.preventDefault();
-    const newRec = {
-      ...form,
-      id: `SUB-2026-00${records.length + 1}`,
-      projectId: `DBPL-2026-0000${records.length + 1}`,
-      disbursedDate: 'Pending'
-    };
-    setRecords([newRec, ...records]);
-    setShowAddModal(false);
+    try {
+      const saved = await api.post('/solar/subsidies', {
+        ...form,
+        projectId: `DBPL-2026-0000${records.length + 1}`,
+        disbursedDate: 'Pending'
+      });
+      setRecords([saved, ...records]);
+      setShowAddModal(false);
+    } catch (err) {
+      console.error('Failed to add subsidy record:', err);
+      alert('Error saving subsidy: ' + err.message);
+    }
   };
 
   const filtered = records.filter(p => {

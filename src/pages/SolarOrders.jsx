@@ -22,6 +22,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { CardSkeleton } from '../components/shared/Skeleton';
+import DataTable from '../components/shared/DataTable';
 import { api } from '../utils/api';
 
 export default function SolarOrders() {

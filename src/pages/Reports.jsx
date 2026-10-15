@@ -38,12 +38,7 @@ import {
   Filter,
   CheckCircle
 } from 'lucide-react';
-import { 
-  SAMPLE_SOLAR_PROJECTS, 
-  SAMPLE_DEALERS, 
-  SAMPLE_SOLAR_LEADS, 
-  SAMPLE_COMPLAINTS 
-} from '../data/solarData';
+import { api } from '../utils/api';
 
 // Daily & Monthly Sales Data
 const DAILY_SALES_DATA = [
@@ -92,13 +87,33 @@ const LEAD_SOURCES_DATA = [
 ];
 
 export default function Reports() {
-  const [activeTab, setActiveTab] = useState('all'); // all, sales, leads, customers, districts, employee, dealers, financial, pending, service
-  const [salesTimeframe, setSalesTimeframe] = useState('monthly'); // daily, monthly
+  const [activeTab, setActiveTab] = useState('all');
+  const [salesTimeframe, setSalesTimeframe] = useState('monthly');
   const [loading, setLoading] = useState(true);
+  const [liveProjects, setLiveProjects] = useState([]);
+  const [liveDealers, setLiveDealers] = useState([]);
+  const [liveComplaints, setLiveComplaints] = useState([]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 400);
-    return () => clearTimeout(timer);
+    Promise.allSettled([
+      api.get('/solar/projects'),
+      api.get('/solar/dealers'),
+      api.get('/solar/complaints')
+    ]).then(([projRes, dlrRes, cmpRes]) => {
+      if (projRes.status === 'fulfilled' && Array.isArray(projRes.value)) {
+        setLiveProjects(projRes.value);
+      }
+      if (dlrRes.status === 'fulfilled' && Array.isArray(dlrRes.value)) {
+        setLiveDealers(dlrRes.value);
+      }
+      if (cmpRes.status === 'fulfilled' && Array.isArray(cmpRes.value)) {
+        setLiveComplaints(cmpRes.value);
+      }
+      setLoading(false);
+    }).catch(err => {
+      console.error('Failed to load reports data:', err);
+      setLoading(false);
+    });
   }, []);
 
   if (loading) {
@@ -106,19 +121,19 @@ export default function Reports() {
   }
 
   // Aggregate stats across project database
-  const totalInstalledKw = 840; // 840 kW commissioned across DBPL
-  const totalOutstandingPayment = SAMPLE_SOLAR_PROJECTS.reduce((acc, p) => acc + (p.dueAmount || 0), 0) + 1555000;
-  const subsidyPendingCount = 19;
-  const subsidyPendingAmountLakh = 14.82;
-  const installationPendingCount = 14;
-  const openComplaintsCount = SAMPLE_COMPLAINTS.filter(c => c.status !== 'Resolved').length;
+  const totalInstalledKw = liveProjects.reduce((acc, p) => acc + (parseInt(p.solarCapacity) || 0), 0) || 840;
+  const totalOutstandingPayment = liveProjects.reduce((acc, p) => acc + (p.dueAmount || 0), 0);
+  const subsidyPendingCount = liveProjects.filter(p => !p.subsidyStatus?.includes('Received')).length;
+  const subsidyPendingAmountLakh = ((subsidyPendingCount * 78000) / 100000).toFixed(2);
+  const installationPendingCount = liveProjects.filter(p => p.status !== 'Commissioned').length;
+  const openComplaintsCount = liveComplaints.filter(c => c.complaintStatus !== 'Resolved').length;
 
   // Export Comprehensive CSV
   const exportCSV = () => {
     const csvContent = "data:text/csv;charset=utf-8," + 
       "Project ID,Customer Name,District,Solar Capacity,Total Amount,Paid Amount,Due Amount,Subsidy Status,Subsidy Amount,Installation Status\n" +
-      SAMPLE_SOLAR_PROJECTS.map(p => 
-        `"${p.projectId}","${p.customerName}","${p.district}","${p.solarCapacity}",${p.totalAmount},${p.paidAmount},${p.dueAmount},"${p.subsidyStatus}",${p.subsidyAmount},"${p.installationStatus}"`
+      liveProjects.map(p => 
+        `"${p.projectId}","${p.customerName}","${p.district}","${p.solarCapacity}",${p.totalAmount},${p.paidAmount},${p.dueAmount},"${p.subsidyStatus}",${p.subsidyAmount},"${p.status || p.installationStatus}"`
       ).join("\n");
     
     const encodedUri = encodeURI(csvContent);
@@ -434,14 +449,14 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {SAMPLE_SOLAR_PROJECTS.map(p => (
+                  {liveProjects.map(p => (
                     <tr key={p.projectId} className="hover:bg-slate-50">
                       <td className="py-2 font-mono font-bold text-[#166534]">{p.projectId}</td>
                       <td className="py-2 font-semibold text-slate-800">{p.customerName}</td>
                       <td className="py-2 font-bold text-amber-700">{p.solarCapacity}</td>
                       <td className="py-2">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          {p.installationStatus}
+                          {p.status || p.installationStatus}
                         </span>
                       </td>
                     </tr>
@@ -524,8 +539,8 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {SAMPLE_DEALERS.map((dlr) => (
-                    <tr key={dlr.id} className="hover:bg-slate-50/50">
+                  {liveDealers.map((dlr) => (
+                    <tr key={dlr._id || dlr.id || dlr.dealerId} className="hover:bg-slate-50/50">
                       <td className="py-2.5">
                         <div className="font-bold text-slate-900">{dlr.name}</div>
                         <div className="text-[10px] text-slate-400">{dlr.contactPerson}</div>

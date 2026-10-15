@@ -71,12 +71,22 @@ export default function SolarDealers() {
     remarks: 'Commission payout against verified solar installations'
   });
 
+  const [dealerLeadsList, setDealerLeadsList] = useState([]);
+
   const loadDealers = async () => {
     try {
-      const data = await api.get('/solar/dealers');
-      setDealers(Array.isArray(data) ? data : []);
+      const [dealersData, leadsData] = await Promise.allSettled([
+        api.get('/solar/dealers'),
+        api.get('/leads')
+      ]);
+      if (dealersData.status === 'fulfilled') {
+        setDealers(Array.isArray(dealersData.value) ? dealersData.value : []);
+      }
+      if (leadsData.status === 'fulfilled') {
+        setDealerLeadsList(Array.isArray(leadsData.value) ? leadsData.value : []);
+      }
     } catch (err) {
-      console.error('Failed to load dealers:', err);
+      console.error('Failed to load dealers/leads:', err);
     } finally {
       setLoading(false);
     }
@@ -203,9 +213,9 @@ export default function SolarDealers() {
 
   // Helper to get dealer-specific leads
   const getDealerLeads = (dealerName) => {
-    return SAMPLE_SOLAR_LEADS.filter(l => 
-      l.dealerName?.toLowerCase().includes(dealerName.toLowerCase()) || 
-      dealerName.toLowerCase().includes(l.dealerName?.toLowerCase())
+    return dealerLeadsList.filter(l => 
+      (l.dealerName || '').toLowerCase().includes(dealerName.toLowerCase()) || 
+      dealerName.toLowerCase().includes((l.dealerName || '').toLowerCase())
     );
   };
 

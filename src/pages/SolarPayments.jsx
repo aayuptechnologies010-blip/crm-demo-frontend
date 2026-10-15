@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import DataTable from '../components/shared/DataTable';
 import { CardSkeleton } from '../components/shared/Skeleton';
+import { api } from '../utils/api';
 
 export default function SolarPayments() {
   const [loading, setLoading] = useState(true);
@@ -31,17 +32,20 @@ export default function SolarPayments() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [showAddReceipt, setShowAddReceipt] = useState(false);
   const [printableReceipt, setPrintableReceipt] = useState(null);
+  const [paymentLedger, setPaymentLedger] = useState([]);
 
-  // Exact 8 Fields matching User Requirement 4.I:
-  // - Total Project Amount
-  // - Advance
-  // - Installment
-  // - Amount Received
-  // - Outstanding Amount
-  // - Payment Date
-  // - Payment Mode
-  // - Receipt Generation
-  const [paymentLedger, setPaymentLedger] = useState([
+  const loadPayments = async () => {
+    try {
+      const data = await api.get('/solar/payments');
+      setPaymentLedger(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load solar payments:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [initialMockPayments] = useState([
     {
       id: 'RCP-2026-0091',
       receiptNo: 'RCP-2026-0091',
@@ -162,18 +166,15 @@ export default function SolarPayments() {
   });
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(timer);
+    loadPayments();
   }, []);
 
-  const handleAddReceipt = (e) => {
+  const handleAddReceipt = async (e) => {
     e.preventDefault();
     const total = Number(form.totalProjectAmount);
     const receivedNow = Number(form.amountReceived);
     const advance = Number(form.advanceAmount);
     const item = {
-      id: `RCP-2026-00${paymentLedger.length + 96}`,
-      receiptNo: `RCP-2026-00${paymentLedger.length + 96}`,
       ...form,
       totalProjectAmount: total,
       advanceAmount: advance,
@@ -181,8 +182,15 @@ export default function SolarPayments() {
       totalReceivedToDate: advance + receivedNow,
       outstandingAmount: Math.max(0, total - (advance + receivedNow))
     };
-    setPaymentLedger([item, ...paymentLedger]);
-    setShowAddReceipt(false);
+
+    try {
+      const saved = await api.post('/solar/payments', item);
+      setPaymentLedger([saved, ...paymentLedger]);
+      setShowAddReceipt(false);
+    } catch (err) {
+      console.error('Failed to save payment receipt:', err);
+      alert('Error saving receipt: ' + err.message);
+    }
   };
 
   const filtered = paymentLedger.filter(p => {

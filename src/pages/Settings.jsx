@@ -27,12 +27,6 @@ import { Input, Select, PrimaryButton, SecondaryButton } from '../components/sha
 import { useAuth } from '../context/AuthContext';
 import { api } from '../utils/api';
 import { requestNotificationPermission } from '../utils/firebase';
-import { 
-  SAMPLE_SOLAR_PROJECTS, 
-  SAMPLE_SOLAR_LEADS, 
-  SAMPLE_DEALERS, 
-  SAMPLE_COMPLAINTS 
-} from '../data/solarData';
 
 const allTabs = [
   { id: 'company', label: 'Company Profile', icon: Building2, roles: ['Super Admin', 'Admin', 'Sales Executive'] },
@@ -646,24 +640,29 @@ export default function Settings() {
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    const backupData = {
-                      timestamp: new Date().toISOString(),
-                      system: 'Devagyadi Bharat Solar CRM',
-                      version: '2.4.0',
-                      collections: {
-                        leads: SAMPLE_SOLAR_LEADS,
-                        projects: SAMPLE_SOLAR_PROJECTS,
-                        dealers: SAMPLE_DEALERS,
-                        complaints: SAMPLE_COMPLAINTS
-                      }
-                    };
-                    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `crm_full_backup_${new Date().toISOString().split('T')[0]}.json`;
-                    link.click();
+                  onClick={async () => {
+                    try {
+                      const [leads, projects, dealers, complaints] = await Promise.all([
+                        api.get('/leads').catch(() => []),
+                        api.get('/solar/projects').catch(() => []),
+                        api.get('/solar/dealers').catch(() => []),
+                        api.get('/solar/complaints').catch(() => [])
+                      ]);
+                      const backupData = {
+                        timestamp: new Date().toISOString(),
+                        system: 'Devagyadi Bharat Solar CRM',
+                        version: '2.4.0',
+                        collections: { leads, projects, dealers, complaints }
+                      };
+                      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `crm_full_backup_${new Date().toISOString().split('T')[0]}.json`;
+                      link.click();
+                    } catch (err) {
+                      alert('Backup generation failed: ' + err.message);
+                    }
                   }}
                   className="px-4 py-2 text-xs font-bold bg-[#166534] hover:bg-emerald-900 text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 whitespace-nowrap">
                   <HardDriveDownload size={14} /> Download Instant JSON Backup
@@ -685,10 +684,11 @@ export default function Settings() {
                     <div className="text-[10px] text-slate-400">All customer inquiries & survey data</div>
                   </div>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      const leads = await api.get('/leads').catch(() => []);
                       const csv = "data:text/csv;charset=utf-8," + 
                         "Lead ID,Customer Name,Mobile,District,Capacity,Status,Amount\n" +
-                        SAMPLE_SOLAR_LEADS.map(l => `${l.id},"${l.customerName}",${l.mobile},${l.district},${l.requiredKw},${l.status},${l.estimatedAmount}`).join("\n");
+                        leads.map(l => `"${l._id || l.id}","${l.customerName || l.name}","${l.mobile || l.phone}","${l.district || 'Lucknow'}","${l.requiredKw || l.value}","${l.status}","${l.estimatedAmount || 0}"`).join("\n");
                       const encoded = encodeURI(csv);
                       const a = document.createElement('a');
                       a.href = encoded;
@@ -707,10 +707,11 @@ export default function Settings() {
                     <div className="text-[10px] text-slate-400">Solar rooftop customer portfolio</div>
                   </div>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      const projects = await api.get('/solar/projects').catch(() => []);
                       const csv = "data:text/csv;charset=utf-8," + 
                         "Project ID,Customer,Mobile,District,Capacity,Installer,Status\n" +
-                        SAMPLE_SOLAR_PROJECTS.map(p => `${p.projectId},"${p.customerName}",${p.mobile},${p.district},${p.solarCapacity},"${p.assignedInstaller}",${p.installationStatus}`).join("\n");
+                        projects.map(p => `"${p.projectId}","${p.customerName}","${p.mobile}","${p.district}","${p.solarCapacity}","${p.assignedInstaller}","${p.status || p.installationStatus}"`).join("\n");
                       const encoded = encodeURI(csv);
                       const a = document.createElement('a');
                       a.href = encoded;
@@ -729,10 +730,11 @@ export default function Settings() {
                     <div className="text-[10px] text-slate-400">Commission earned, paid & pending ledger</div>
                   </div>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      const dealers = await api.get('/solar/dealers').catch(() => []);
                       const csv = "data:text/csv;charset=utf-8," + 
                         "Dealer ID,Firm Name,Contact Person,Mobile,District,Closed kW,Commission Earned,Commission Paid,Pending\n" +
-                        SAMPLE_DEALERS.map(d => `${d.id},"${d.name}","${d.contactPerson}",${d.mobile},${d.district},${d.closedSalesKw},${d.commissionEarned},${d.commissionPaid},${d.commissionPending}`).join("\n");
+                        dealers.map(d => `"${d.dealerId || d.id}","${d.name}","${d.contactPerson}","${d.mobile}","${d.district}","${d.closedSalesKw || '0 kW'}",${d.commissionEarned || 0},${d.commissionPaid || 0},${d.commissionPending || 0}`).join("\n");
                       const encoded = encodeURI(csv);
                       const a = document.createElement('a');
                       a.href = encoded;
@@ -751,10 +753,11 @@ export default function Settings() {
                     <div className="text-[10px] text-slate-400">Fault logs, technician visits & resolutions</div>
                   </div>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      const complaints = await api.get('/solar/complaints').catch(() => []);
                       const csv = "data:text/csv;charset=utf-8," + 
                         "Complaint No,Customer Name,Project ID,Fault Type,Priority,Technician,Visit Date,Status\n" +
-                        SAMPLE_COMPLAINTS.map(c => `${c.id},"${c.customerName}",${c.projectId},"${c.complaintType}",${c.priority},"${c.technicianName}",${c.visitDate},${c.status}`).join("\n");
+                        complaints.map(c => `"${c.complaintNumber || c.id}","${c.customerName}","${c.projectId}","${c.complaintType}","${c.priority}","${c.technicianName}","${c.visitDate}","${c.complaintStatus}"`).join("\n");
                       const encoded = encodeURI(csv);
                       const a = document.createElement('a');
                       a.href = encoded;

@@ -26,12 +26,12 @@ import {
   Building,
   FileText
 } from 'lucide-react';
-import { SAMPLE_COMPLAINTS, SAMPLE_SOLAR_PROJECTS } from '../data/solarData';
+import { api } from '../utils/api';
 import DataTable from '../components/shared/DataTable';
 import { CardSkeleton } from '../components/shared/Skeleton';
 
 export default function SolarServices() {
-  const [complaints, setComplaints] = useState(SAMPLE_COMPLAINTS);
+  const [complaints, setComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -54,21 +54,28 @@ export default function SolarServices() {
     resolution: '',
     beforePhotoUrl: '',
     afterPhotoUrl: '',
-    complaintStatus: 'Open'
+    complaintStatus: 'In Progress'
   });
 
+  const loadComplaints = async () => {
+    try {
+      const data = await api.get('/solar/complaints');
+      setComplaints(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load complaints:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(timer);
+    loadComplaints();
   }, []);
 
-  const handleCreate = (e) => {
+  const handleCreate = async (e) => {
     e.preventDefault();
-    const newId = `CMP-2026-${complaints.length + 13}`;
     const techName = form.technicianAssignment.split(' (')[0];
-    const created = {
-      complaintNumber: newId,
-      id: newId,
+    const createdPayload = {
       customerName: form.customerName,
       projectId: form.projectId || 'DBPL-2026-00009',
       consumerNo: form.consumerNo || 'PU-78392104',
@@ -79,15 +86,20 @@ export default function SolarServices() {
       technicianAssignment: form.technicianAssignment,
       visitDate: form.visitDate,
       resolution: form.resolution || 'Assigned to site technician for initial diagnosis.',
-      beforePhotos: form.beforePhotoUrl ? [form.beforePhotoUrl] : ['https://images.unsplash.com/photo-1509391365360-2e959784a276?w=500&auto=format&fit=crop&q=60'],
+      beforePhotos: form.beforePhotoUrl ? [form.beforePhotoUrl] : [],
       afterPhotos: form.afterPhotoUrl ? [form.afterPhotoUrl] : [],
       complaintStatus: form.complaintStatus,
-      status: form.complaintStatus,
-      reportedDate: new Date().toISOString().split('T')[0],
       description: form.description
     };
-    setComplaints([created, ...complaints]);
-    setShowAddModal(false);
+
+    try {
+      const saved = await api.post('/solar/complaints', createdPayload);
+      setComplaints([saved, ...complaints]);
+      setShowAddModal(false);
+    } catch (err) {
+      console.error('Failed to register complaint:', err);
+      alert('Error registering complaint: ' + err.message);
+    }
     // Reset form
     setForm({
       customerName: '',
